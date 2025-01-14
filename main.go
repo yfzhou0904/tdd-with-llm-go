@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -17,28 +18,37 @@ import (
 func main() {
 	opts, config := parseFlags()
 
-	oai := llm.OAI{
-		BaseURL: config.OpenAI.BaseURL,
-		Key:     config.OpenAI.Key,
+	var gen llm.TextGenerator
+
+	if opts.Provider == "oai" {
+		gen = llm.OAI{
+			BaseURL: config.OpenAI.BaseURL,
+			Key:     config.OpenAI.Key,
+		}
+	} else if opts.Provider == "anthropic" {
+		gen = llm.Claude{
+			BaseURL: config.Anthropic.BaseURL,
+			Key:     config.Anthropic.Key,
+		}
+	} else {
+		log.Fatalln("unknown provider")
 	}
+
+	prompt := prompts.RequirementPrompt(prompts.RequirementReq{
+		Requirements: opts.Specification,
+		Signature:    opts.FunctionSignature,
+	})
 
 	iteration := 0
 	for {
+		iteration++
+
 		var (
 			testCode, implCode, output string
 		)
 
-		iteration++
-
 		slog.Info(fmt.Sprintf("generating draft #%d", iteration))
-
-		prompt := ""
-		if iteration == 1 {
-			prompt = prompts.RequirementPrompt(opts.Requirements, opts.FunctionSignature)
-		} else {
-			prompt = prompts.IteratePrompt(opts.Requirements, opts.FunctionSignature, testCode, implCode, output)
-		}
-		output, err := oai.GenerateText(prompt)
+		output, err := gen.GenerateText(prompt)
 		if err != nil {
 			log.Fatalln(err.Error())
 		}
@@ -60,10 +70,21 @@ func main() {
 
 		slog.Error("test failed", "err", err.Error())
 		fmt.Println("\n" + output + "\n")
-		if !confirmIterate() {
+
+		proceed, hint := false, ""
+		if proceed, hint = confirmIterate(); !proceed {
 			fmt.Println("aborting")
 			return
 		}
+
+		prompt = prompts.IteratePrompt(prompts.IterateReq{
+			Requirements: opts.Specification,
+			Signature:    opts.FunctionSignature,
+			PrevTest:     testCode,
+			PrevImpl:     implCode,
+			PrevOutput:   output,
+			Hint:         hint,
+		})
 	}
 }
 
@@ -122,21 +143,32 @@ func testImplementation(testCode, implCode string) (output string, err error) {
 	return string(outputBytes), nil
 }
 
-func confirmIterate() bool {
-	fmt.Print("\nDo you want to proceed with another iteration? (y/N): ")
-	var response string
-	fmt.Scanln(&response)
-	return strings.ToLower(response) == "y"
+func confirmIterate() (proceed bool, hint string) {
+	fmt.Print("\nTest failed, proceed to the next iteration? Perhaps give a hint (y/n/<hint>): ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	userResponse := scanner.Text()
+
+	if len(userResponse) == 1 {
+		if strings.ToLower(userResponse) == "y" {
+			return true, ""
+		}
+		return false, ""
+	}
+	return true, userResponse
 }
 
 func parseFlags() (Options, Config) {
 	opts := Options{}
-	flag.StringVar(&opts.Requirements, "r", "", "requirements for the function")
-	flag.StringVar(&opts.FunctionSignature, "s", "", "function signature")
-	flag.StringVar(&opts.ConfigPath, "c", "./config.toml", "configuration file")
+	flag.StringVar(&opts.ConfigPath, "config", "./config.toml", "configuration file")
+	flag.StringVar(&opts.Specification, "spec", "", "detailed spec & requirements for the function to be implemented")
+	flag.StringVar(&opts.FunctionSignature, "sig", "", "function signature")
+	flag.StringVar(&opts.Provider, "provider", "anthropic", "oai / anthropic")
+	flag.StringVar(&opts.Hint, "hint", "", "hint for llm")
 	flag.Parse()
 
-	if opts.Requirements == "" || opts.FunctionSignature == "" {
+	if opts.Specification == "" || opts.FunctionSignature == "" {
 		log.Fatalln("requirements and function signature are required")
 	}
 
@@ -156,8 +188,10 @@ func parseFlags() (Options, Config) {
 
 type Options struct {
 	ConfigPath        string
-	Requirements      string
+	Specification     string
 	FunctionSignature string
+	Hint              string
+	Provider          string
 }
 
 type Config struct {
@@ -165,4 +199,8 @@ type Config struct {
 		BaseURL string `toml:"base_url"`
 		Key     string `toml:"key"`
 	} `toml:"openai"`
+	Anthropic struct {
+		BaseURL string `toml:"base_url"`
+		Key     string `toml:"key"`
+	} `toml:"anthropic"`
 }

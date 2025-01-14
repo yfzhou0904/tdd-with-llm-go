@@ -26,3 +26,5 @@ go.work.sum
 
 config.toml
 config.*.toml
+
+sandbox/*.go

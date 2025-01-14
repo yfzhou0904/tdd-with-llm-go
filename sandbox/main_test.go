@@ -1,96 +1,75 @@
-package main
+package ipparser
 
 import (
-	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestFindCIDRs(t *testing.T) {
+func TestParseCidrs(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		expectedCIDRs []string
-		expectError   bool
+		name     string
+		input    string
+		expected []string
+		wantErr  bool
 	}{
 		{
-			name:          "Single IPv4 CIDR",
-			input:         "The IP range 192.168.1.0/24 is used for internal networking.",
-			expectedCIDRs: []string{"192.168.1.0/24"},
-			expectError:   false,
+			name:     "empty input",
+			input:    "",
+			expected: nil,
+			wantErr:  false,
 		},
 		{
-			name:          "Multiple mixed CIDRs",
-			input:         "Valid CIDRs: 10.0.0.0/8, 172.16.0.0/12, and fe80::/10",
-			expectedCIDRs: []string{"10.0.0.0/8", "172.16.0.0/12", "fe80::/10"},
-			expectError:   false,
+			name:     "single IPv4 CIDR",
+			input:    "The network is 192.168.1.0/24",
+			expected: []string{"192.168.1.0/24"},
+			wantErr:  false,
 		},
 		{
-			name:          "Non-CIDR IP addresses ignored",
-			input:         "Here are some IPs: 1.1.1.1 and 2001:db8::ff00:42:8329 but no CIDRs.",
-			expectedCIDRs: []string{},
-			expectError:   false,
+			name:     "single IPv6 CIDR",
+			input:    "IPv6 network: 2001:db8::/32",
+			expected: []string{"2001:db8::/32"},
+			wantErr:  false,
 		},
 		{
-			name:          "Embedded CIDR in random text",
-			input:         "Random text includes stuff like 127.0.0.1 and 192.168.100.0/24 interspersed.",
-			expectedCIDRs: []string{"192.168.100.0/24"},
-			expectError:   false,
+			name:     "multiple mixed CIDRs",
+			input:    "Networks: 10.0.0.0/8 and 2001:db8::/32 and 172.16.0.0/12",
+			expected: []string{"10.0.0.0/8", "2001:db8::/32", "172.16.0.0/12"},
+			wantErr:  false,
 		},
 		{
-			name:          "Invalid CIDRs ignored",
-			input:         "Some invalid CIDRs: 300.300.0.0/24, and fe80:::/130",
-			expectedCIDRs: []string{},
-			expectError:   false,
+			name:     "single IPs should be converted to /32 or /128",
+			input:    "IPs: 192.168.1.1 and 2001:db8::1",
+			expected: []string{"192.168.1.1/32", "2001:db8::1/128"},
+			wantErr:  false,
 		},
 		{
-			name:          "Empty input",
-			input:         "",
-			expectedCIDRs: []string{},
-			expectError:   false,
+			name:     "invalid IP or CIDR",
+			input:    "Invalid: 256.256.256.256/24",
+			expected: nil,
+			wantErr:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			foundCIDRs, err := findCIDRs(tt.input)
+			result, err := ParseCidrs(tt.input)
 
-			if tt.expectError {
-				if err == nil {
-					t.Fatalf("expected error but got none")
-				}
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			assert.NoError(t, err)
+			assert.Len(t, result, len(tt.expected))
+
+			// Convert results to strings for comparison
+			resultStrings := make([]string, len(result))
+			for i, ipnet := range result {
+				resultStrings[i] = ipnet.String()
 			}
 
-			// Validate the CIDRs match
-			expected := make([]*net.IPNet, len(tt.expectedCIDRs))
-			for i, cidr := range tt.expectedCIDRs {
-				_, subnet, err := net.ParseCIDR(cidr)
-				if err != nil {
-					t.Fatalf("unexpected error parsing expected CIDR: %v", err)
-				}
-				expected[i] = subnet
-			}
-
-			if len(foundCIDRs) != len(expected) {
-				t.Errorf("expected %v CIDRs, but got %v", len(expected), len(foundCIDRs))
-			}
-
-			for _, found := range foundCIDRs {
-				matched := false
-				for _, exp := range expected {
-					if found.String() == exp.String() {
-						matched = true
-						break
-					}
-				}
-				if !matched {
-					t.Errorf("unexpected CIDR found: %v", found)
-				}
-			}
+			assert.ElementsMatch(t, tt.expected, resultStrings)
 		})
 	}
 }

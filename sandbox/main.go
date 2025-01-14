@@ -1,33 +1,54 @@
-package main
+package ipparser
 
 import (
-	"errors"
+	"log/slog"
 	"net"
 	"regexp"
+	"strings"
 )
 
-func findCIDRs(input string) ([]*net.IPNet, error) {
-	// Regular expression for CIDR IPv4 or IPv6 matches
-	cidrRegex := `((?:\d{1,3}\.){3}\d{1,3}\/\d{1,2})|(?:[a-fA-F0-9:]+\/\d{1,3})`
-
-	compiledRegex, err := regexp.Compile(cidrRegex)
-	if err != nil {
-		return nil, errors.New("failed to compile regex")
+func ParseCidrs(input string) ([]*net.IPNet, error) {
+	if strings.TrimSpace(input) == "" {
+		return nil, nil
 	}
 
-	// Find all matches in the input
-	matches := compiledRegex.FindAllString(input, -1)
+	ipv4Regex := `\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b`
+	ipv6Regex := `\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}(?:/\d{1,3})?\b|` +
+		`\b(?:[0-9a-fA-F]{1,4}:){1,7}:(?:/\d{1,3})?\b|` +
+		`\b:(?::[0-9a-fA-F]{1,4}){1,7}(?:/\d{1,3})?\b|` +
+		`\b(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}(?:/\d{1,3})?\b`
 
-	parsedCIDRs := []*net.IPNet{}
+	combined := regexp.MustCompile(ipv4Regex + "|" + ipv6Regex)
+	matches := combined.FindAllString(input, -1)
 
+	var result []*net.IPNet
 	for _, match := range matches {
-		_, subnet, err := net.ParseCIDR(match)
-		if err != nil {
-			// Skip invalid CIDRs
-			continue
+		var ipnet *net.IPNet
+		var err error
+
+		if !strings.Contains(match, "/") {
+			ip := net.ParseIP(match)
+			if ip == nil {
+				continue
+			}
+			if ip.To4() != nil {
+				match += "/32"
+				slog.Info("is ipv4", "address", match)
+			} else {
+				slog.Info("is ipv6", "address", match)
+				match += "/128"
+			}
 		}
-		parsedCIDRs = append(parsedCIDRs, subnet)
+
+		_, ipnet, err = net.ParseCIDR(match)
+		if err != nil {
+			return nil, err
+		}
+
+		if ipnet != nil {
+			result = append(result, ipnet)
+		}
 	}
 
-	return parsedCIDRs, nil
+	return result, nil
 }

@@ -4,6 +4,7 @@ go 1.23.4
 
 require (
 	github.com/BurntSushi/toml v1.4.0
+	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.8
 	github.com/openai/openai-go v0.1.0-alpha.45
 )
 
