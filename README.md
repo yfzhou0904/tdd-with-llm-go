@@ -4,7 +4,7 @@ Blog Post:
 [https://blog.yfzhou.fyi/posts/tdd-llm/](https://blog.yfzhou.fyi/posts/tdd-llm/)
 
 Usage:
-1. Provide your own OpenAI / Anthropic API keys.
+1. Provide your own OpenAI / Anthropic API keys in config.toml (refer to config.example.toml).
 2. Run main.go
 ```sh
 % go run main.go -h
