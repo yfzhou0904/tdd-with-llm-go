@@ -1,0 +1,6 @@
+[openai]
+base_url = "https://api.openai.com/v1"
+key = ""
+[anthropic]
+base_url = "https://api.anthropic.com/v1"
+key = ""
