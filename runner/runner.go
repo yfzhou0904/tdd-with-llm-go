@@ -38,10 +38,21 @@ func (r *TestRunner) Run(ctx context.Context) error {
 			return nil
 		}
 
-		prompt, err = r.handleFailedIteration(testCode, implCode, output)
-		if err != nil {
-			return fmt.Errorf("iteration handling failed: %w", err)
+		proceed, hint := confirmIterate()
+		if !proceed {
+			return fmt.Errorf("user abort")
+		} else if hint != "" {
+			slog.Info("using hint", "hint", hint)
 		}
+
+		prompt = prompts.IteratePrompt(prompts.IterateReq{
+			Requirements: r.Opts.Specification,
+			Signature:    r.Opts.FunctionSignature,
+			PrevTest:     testCode,
+			PrevImpl:     implCode,
+			PrevOutput:   output,
+			Hint:         hint,
+		})
 	}
 }
 
@@ -79,22 +90,6 @@ func (r *TestRunner) runTests(iteration int, testCode, implCode string) (passed 
 	slog.Warn("test failed", "err", err)
 	fmt.Println("\n" + output + "\n")
 	return false, output, nil
-}
-
-func (r *TestRunner) handleFailedIteration(testCode, implCode, output string) (string, error) {
-	proceed, hint := confirmIterate()
-	if !proceed {
-		return "", fmt.Errorf("user abort")
-	}
-
-	return prompts.IteratePrompt(prompts.IterateReq{
-		Requirements: r.Opts.Specification,
-		Signature:    r.Opts.FunctionSignature,
-		PrevTest:     testCode,
-		PrevImpl:     implCode,
-		PrevOutput:   output,
-		Hint:         hint,
-	}), nil
 }
 
 func (r *TestRunner) createInitialPrompt() string {

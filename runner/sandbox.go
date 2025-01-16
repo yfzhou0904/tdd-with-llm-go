@@ -56,7 +56,7 @@ func (s LocalSandbox) WriteAndTest(testCode, implCode string, showDiff bool) (ou
 
 	if showDiff {
 		for _, f := range []string{s.ImplCodePath, s.TestCodePath} {
-			slog.Info(fmt.Sprintf("diffing %s"))
+			slog.Info(fmt.Sprintf("diffing %s", f))
 			cmd = exec.Command("diff", "-y", f, f+".new")
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
